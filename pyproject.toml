@@ -46,4 +46,3 @@ isort.required-imports = ["from __future__ import annotations"]
 
 [tool.ruff]
 line-length = 100
-
