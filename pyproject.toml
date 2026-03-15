@@ -18,7 +18,7 @@ build-backend = "hatchling.build"
 [tool.hatch]
 version.source = "vcs"
 build.hooks.vcs.version-file = "src/capn_crunch/_version.py"
-build.targets.wheel.packages = ["capn_crunch"]
+build.targets.wheel.packages = ["src/capn_crunch"]
 metadata.allow-direct-references = true
 
 [dependency-groups]
@@ -28,3 +28,22 @@ dev = [
     "pytest>=9.0.2",
     "ruff>=0.15.6",
 ]
+
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+select = ["ALL"]
+ignore = [
+    "G004",
+    "D203",
+    "D212",
+    "COM812",
+]
+isort.required-imports = ["from __future__ import annotations"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ALL"]
+
+[tool.ruff]
+line-length = 100
+

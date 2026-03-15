@@ -1,29 +1,38 @@
-"""Contains the core of the option class containers that are used to
+"""
+Capn-Crunch options.
+
+Contains the core of the option class containers that are used to
 hold stateful properties throughout the flint-crew codebases.
 """
 
 from __future__ import annotations
 
-from argparse import ArgumentParser, Namespace
+import logging
 from types import NoneType, UnionType
 from typing import (
+    TYPE_CHECKING,
     Any,
     Self,
     TypeVar,
     get_args,
     get_origin,
 )
-import logging
 
 from pydantic import BaseModel, ConfigDict
-from pydantic.fields import FieldInfo
+
+if TYPE_CHECKING:
+    from argparse import ArgumentParser, Namespace
+
+    from pydantic.fields import FieldInfo
 
 logger = logging.getLogger("__name__")
 
 
 class BaseOptions(BaseModel):
-    """A base class that Options style flint classes can
-    inherit from. This is derived from ``pydantic.BaseModel``,
+    """
+    A base class that Options style flint classes can inherit from.
+
+    This is derived from ``pydantic.BaseModel``,
     and can be used for validation of supplied values.
 
     Class derived from ``BaseOptions`` are immutable by
@@ -39,7 +48,16 @@ class BaseOptions(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    def with_options(self, /, **kwargs) -> Self:
+    def with_options(self, /, **kwargs: dict[str, Any]) -> Self:
+        """
+        Modify options.
+
+        Returns a new instance of the options class.
+
+        Returns:
+            Self: A new instance of the options.
+
+        """
         new_args = self.__dict__.copy()
         new_args.update(**kwargs)
 
@@ -49,8 +67,9 @@ class BaseOptions(BaseModel):
         return self.model_dump()
 
 
-def options_to_dict(input_options: Any) -> dict:
-    """Helper function to convert an `Options` type class to a dictionary.
+def options_to_dict(input_options: BaseOptions) -> dict:
+    """
+    Convert options to a dictionary.
 
     Most of `flint` `Option` and `Result` classes used `typing.NamedTuples`, which carry with
     it a `_asdict` method to convert them to a dictionary. Future roadmap plans to move over to
@@ -64,8 +83,8 @@ def options_to_dict(input_options: Any) -> dict:
 
     Returns:
         Dict: The dictionary version of the input options
-    """
 
+    """
     if "_asdict" in dir(input_options):
         return input_options._asdict()
 
@@ -77,28 +96,40 @@ def options_to_dict(input_options: Any) -> dict:
 
     try:
         return dict(**input_options)
-    except TypeError:
-        raise TypeError(f"Input options is not known: {type(input_options)}")
+    except TypeError as err:
+        msg = f"Input options is not known: {type(input_options)}"
+        raise TypeError(msg) from err
 
 
 def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str, Any]]:
-    """Convert a pydantic Field into ``dict`` to splate into ArgumentParser.add_argument()"""
+    """
+    Convert a pydantic Field into ``dict`` to splat into ArgumentParser.add_argument.
 
+    Args:
+        name (str): Attribute name.
+        field (FieldInfo): Attribute information.
+
+    Raises:
+        ValueError: If `nargs` can't be determined.
+
+    Returns:
+        tuple[str, dict[str, Any]]: Argparse options
+
+    """
     field_name = name if field.is_required() else "--" + name.replace("_", "-")
 
     field_type = get_origin(field.annotation)
     field_args = get_args(field.annotation)
     iterable_types = (list, tuple, set)
 
-    options = dict(action="store", help=field.description, default=field.default)
+    options = {"action": "store", "help": field.description, "default": field.default}
 
     if field.annotation is bool:
         options["action"] = "store_false" if field.default else "store_true"
 
     # if field_type is in (list, tuple, set) OR if (list, tuple, set) | Any
     elif field_type in iterable_types or (
-        field_type is UnionType
-        and any(get_origin(p) in iterable_types for p in field_args)
+        field_type is UnionType and any(get_origin(p) in iterable_types for p in field_args)
     ):
         nargs: str | int = "+"
 
@@ -115,7 +146,8 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
                     nargs = len(args)
 
         if nargs == 0:
-            raise ValueError(f"Unable to determine nargs for {name=}, got {nargs=}")
+            msg = f"Unable to determine nargs for {name=}, got {nargs=}"
+            raise ValueError(msg)
         options["nargs"] = nargs
 
     return field_name, options
@@ -126,33 +158,39 @@ def add_options_to_parser(
     options_class: type[BaseOptions],
     description: str | None = None,
 ) -> ArgumentParser:
-    """Given an established argument parser and a class derived
+    """
+    Add options to a parser.
+
+    Given an established argument parser and a class derived
     from a ``pydantic.BaseModel``, populate the argument parser
     with the model properties.
 
     Args:
         parser (ArgumentParser): Parser that arguments will be added to
-        options_class (type[BaseModel]): A ``Options`` style class derived from ``BaseOptions``
+        options_class (type[BaseModel]): A ``Options`` style class derived from
+        ``BaseOptions``
+        description (str | None, optional): parser description. Defaults to None.
 
     Returns:
         ArgumentParser: Updated argument parser
-    """
 
-    assert issubclass(options_class, BaseModel), (
+    """
+    assert issubclass(options_class, BaseModel), (  # noqa: S101
         f"{options_class=} is not a pydantic BaseModel"
     )
 
     group = parser.add_argument_group(
-        title=f"Inputs for {options_class.__name__}", description=description
+        title=f"Inputs for {options_class.__name__}",
+        description=description,
     )
 
     for name, field in options_class.model_fields.items():
         field_name, options = _create_argparse_options(name=name, field=field)
         try:
-            group.add_argument(field_name, **options)  # type: ignore
+            group.add_argument(field_name, **options)
         except Exception as e:
-            logger.error(f"{field_name=} {options=}")
-            raise e
+            msg = f"{field_name=} {options=}"
+            raise ValueError(msg) from e
 
     return parser
 
@@ -161,32 +199,34 @@ U = TypeVar("U", bound=BaseOptions)
 
 
 def create_options_from_parser(
-    parser_namespace: Namespace, options_class: type[U]
+    parser_namespace: Namespace,
+    options_class: type[U],
 ) -> U:
-    """Given a ``BaseOptions`` derived class, extract the corresponding
+    """
+    Create options class from an argparse parser.
+
+    Given a ``BaseOptions`` derived class, extract the corresponding
     arguments from an ``argparse.nNamespace``. These options correspond to
     ones generated by ``add_options_to_parser``.
 
     Args:
-        parser_namespace (Namespace): The argument parser corresponding to those in the ``BaseOptions`` class
+        parser_namespace (Namespace): The argument parser corresponding to those in the
+        ``BaseOptions`` class
         options_class (U): A ``BaseOptions`` derived class
 
     Returns:
         U: An populated options class with arguments drawn from CLI argument parser
+
     """
-    assert issubclass(
-        options_class,  # type: ignore
+    assert issubclass(  # noqa: S101
+        options_class,
         BaseModel,
     ), f"{options_class=} is not a pydantic BaseModel"
 
-    args = (
-        vars(parser_namespace)
-        if not isinstance(parser_namespace, dict)
-        else parser_namespace
-    )
+    args = vars(parser_namespace) if not isinstance(parser_namespace, dict) else parser_namespace
 
     opts_dict = {}
-    for name, _ in options_class.model_fields.items():
+    for name in options_class.model_fields:
         opts_dict[name] = args[name]
 
     return options_class(**opts_dict)
