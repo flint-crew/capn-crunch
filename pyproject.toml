@@ -1,6 +1,6 @@
 [project]
 name = "capn-crunch"
-description = "Add your description here"
+description = "The Pirate Serialiser."
 readme = "README.md"
 authors = [
     { name = "Alec Thomson", email = "alec.thomson@skao.int" }
@@ -10,6 +10,21 @@ dependencies = [
     "pydantic>=2",
 ]
 dynamic = ["version"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
 
 [build-system]
 requires = ["hatchling", "hatch-vcs"]
