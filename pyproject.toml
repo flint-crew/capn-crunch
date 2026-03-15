@@ -1,0 +1,30 @@
+[project]
+name = "capn-crunch"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Alec Thomson", email = "alec.thomson@skao.int" }
+]
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.12.5",
+]
+dynamic = ["version"]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch]
+version.source = "vcs"
+build.hooks.vcs.version-file = "src/capn_crunch/_version.py"
+build.targets.wheel.packages = ["capn_crunch"]
+metadata.allow-direct-references = true
+
+[dependency-groups]
+dev = [
+    "pre-commit>=4.5.1",
+    "prek>=0.3.5",
+    "pytest>=9.0.2",
+    "ruff>=0.15.6",
+]
