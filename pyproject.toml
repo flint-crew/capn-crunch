@@ -36,6 +36,7 @@ build.hooks.vcs.version-file = "src/capn_crunch/_version.py"
 build.targets.wheel.packages = ["src/capn_crunch"]
 metadata.allow-direct-references = true
 
+
 [dependency-groups]
 dev = [
     "pre-commit>=4.5.1",
