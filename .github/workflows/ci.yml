@@ -62,7 +62,7 @@ jobs:
           --durations=20 -n auto -p no:warnings
       # -p no:warnings is needed to avoid warnings errors caused by VOTable
       - name: Upload coverage report
-        uses: codecov/codecov-action@v5.5.2
+        uses: codecov/codecov-action@v5.5.3
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 
