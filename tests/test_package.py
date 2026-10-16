@@ -2,15 +2,26 @@ from __future__ import annotations
 
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import Literal, Optional
 
+import pytest
 from pydantic.fields import FieldInfo
 
-from capn_crunch import BaseOptions, add_options_to_parser
+from capn_crunch import BaseOptions, add_options_to_parser, create_options_from_parser
 from capn_crunch.core import _create_argparse_options
 
 
 class ShipOptions(BaseOptions):
     ship: str = "Black Pearl"
+
+
+class CrewOptions(BaseOptions):
+    cube_products: list[Literal["dirty", "clean", "model"]] = []
+    """Which cubes to write"""
+    mode: Literal["fast", "slow"] = "fast"
+    """The sailing mode"""
+    level: Literal[1, 2, 3] = 1
+    """The crew level"""
 
 
 def test_options():
@@ -91,3 +102,84 @@ def test_fieldinfo_to_argparse_options():
     )
     assert field_options["default"] == None  # noqa E711
     assert field_options["nargs"] == 2
+
+
+def test_optional_container_nargs():
+    """Containers in a union with ``None`` should keep the right nargs"""
+    field = FieldInfo(default=None, annotation=list[int] | None)
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["nargs"] == "+"
+
+    field = FieldInfo(default=None, annotation=set[str] | None)
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["nargs"] == "+"
+
+    field = FieldInfo(default=None, annotation=Optional[tuple[str, str]])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["nargs"] == 2
+
+
+def test_literal_choices_argparse_options():
+    """``Literal`` annotations should set the argparse choices"""
+    field = FieldInfo(default="a", annotation=Literal["a", "b"])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("a", "b")
+    assert "nargs" not in field_options
+    assert "type" not in field_options
+
+    field = FieldInfo(default=[], annotation=list[Literal["dirty", "clean", "model"]])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("dirty", "clean", "model")
+    assert field_options["nargs"] == "+"
+
+    field = FieldInfo(default=("x",), annotation=tuple[Literal["x", "y"], ...])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("x", "y")
+    assert field_options["nargs"] == "+"
+
+    field = FieldInfo(default=None, annotation=Literal["a", "b"] | None)
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("a", "b")
+    assert "nargs" not in field_options
+
+    field = FieldInfo(default=None, annotation=list[Literal["dirty", "clean"]] | None)
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("dirty", "clean")
+    assert field_options["nargs"] == "+"
+
+    field = FieldInfo(default="a", annotation=Literal["a"] | Literal["b", "a"])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == ("a", "b")
+
+    field = FieldInfo(default=1, annotation=Literal[1, 2, 3])
+    _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+    assert field_options["choices"] == (1, 2, 3)
+    assert field_options["type"] is int
+
+    # Literals that argparse can not convert to are left to pydantic
+    for annotation in (Literal[True, False], Literal["auto", 1], Literal["a"] | int):
+        field = FieldInfo(default="a", annotation=annotation)
+        _, field_options = _create_argparse_options(name="jack_sparrow", field=field)
+        assert "choices" not in field_options
+        assert "type" not in field_options
+
+
+def test_parser_literal_choices():
+    """Choices should be enforced by the parser and survive conversion to options"""
+    parser = add_options_to_parser(parser=ArgumentParser(), options_class=CrewOptions)
+
+    help_text = parser.format_help()
+    assert "{dirty,clean,model}" in help_text
+    assert "{fast,slow}" in help_text
+
+    args = parser.parse_args(["--cube-products", "dirty", "clean", "--level", "2"])
+    crew_options = create_options_from_parser(args, CrewOptions)
+    assert crew_options.cube_products == ["dirty", "clean"]
+    assert crew_options.mode == "fast"
+    assert crew_options.level == 2
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--cube-products", "dirty", "bad"])
+
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--level", "4"])
