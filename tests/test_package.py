@@ -32,7 +32,7 @@ def test_options():
 def test_parser():
     parser = ArgumentParser()
     ship_parser = add_options_to_parser(parser=parser, options_class=ShipOptions)
-    args = ship_parser.parse_args()
+    args = ship_parser.parse_args([])
 
     assert args.ship == "Black Pearl"
 
