@@ -13,8 +13,10 @@ from types import NoneType, UnionType
 from typing import (
     TYPE_CHECKING,
     Any,
+    Literal,
     Self,
     TypeVar,
+    Union,
     get_args,
     get_origin,
 )
@@ -36,6 +38,10 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger("__name__")
+
+# ``X | None`` gives ``types.UnionType``, but ``Optional[X]`` and ``Literal[...] | None``
+# give ``typing.Union`` (until python 3.14 where these are unified)
+_UNION_TYPES = (UnionType, Union)
 
 
 class BaseOptions(BaseModel):
@@ -140,9 +146,76 @@ def options_to_dict(input_options: BaseOptions) -> dict:
         raise TypeError(msg) from err
 
 
+def _get_literal_choices(annotation: object) -> tuple[Any, ...] | None:
+    """
+    Collect the allowed values of a ``Literal`` annotation.
+
+    ``Literal`` types nested inside unions (e.g. ``Literal[...] | None``) and
+    containers (e.g. ``list[Literal[...]]``) are also searched. If any member of
+    a union or container is not ``Literal`` based the values are unrestricted.
+
+    Args:
+        annotation (object): The type annotation to inspect.
+
+    Returns:
+        tuple[Any, ...] | None: The allowed values, or ``None`` if unrestricted.
+
+    """
+    origin = get_origin(annotation)
+    if origin is Literal:
+        return get_args(annotation)
+
+    if origin not in (*_UNION_TYPES, list, tuple, set):
+        return None
+
+    choices: list[Any] = []
+    for arg in get_args(annotation):
+        if arg is NoneType or arg is Ellipsis:
+            continue
+        arg_choices = _get_literal_choices(arg)
+        if arg_choices is None:
+            return None
+        choices.extend(arg_choices)
+
+    return tuple(dict.fromkeys(choices)) or None
+
+
+def _create_choices_options(annotation: object) -> dict[str, Any]:
+    """
+    Create the ``choices`` (and ``type``) argparse options for a ``Literal`` annotation.
+
+    Only ``str``, ``int`` or ``float`` literals of a single type are supported, as
+    argparse needs to convert the supplied string before checking it against the
+    choices. Other literals (``bool``, ``Enum``, mixed types) are left unrestricted
+    and are validated by pydantic. Choices of fixed length tuples with different
+    literals in each position are merged together.
+
+    Args:
+        annotation (object): The type annotation to inspect.
+
+    Returns:
+        dict[str, Any]: Argparse options, empty if no choices apply.
+
+    """
+    choices = _get_literal_choices(annotation)
+    if choices is None:
+        return {}
+
+    choice_types = {type(choice) for choice in choices}
+    if choice_types == {str}:
+        return {"choices": choices}
+    if choice_types in ({int}, {float}):
+        return {"choices": choices, "type": choice_types.pop()}
+
+    return {}
+
+
 def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str, Any]]:
     """
     Convert a pydantic Field into ``dict`` to splat into ArgumentParser.add_argument.
+
+    ``Literal`` annotations (including those inside containers or unions with
+    ``None``) set the argparse ``choices``.
 
     Args:
         name (str): Attribute name.
@@ -168,7 +241,7 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
 
     # if field_type is in (list, tuple, set) OR if (list, tuple, set) | Any
     elif field_type in iterable_types or (
-        field_type is UnionType and any(get_origin(p) in iterable_types for p in field_args)
+        field_type in _UNION_TYPES and any(get_origin(p) in iterable_types for p in field_args)
     ):
         nargs: str | int = "+"
 
@@ -178,16 +251,18 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
             nargs = len(field_args)
 
         # Now we handle unions, but do the same check as above
-        elif field_type is UnionType and Ellipsis not in field_args:
+        elif field_type in _UNION_TYPES and Ellipsis not in field_args:
             for arg in field_args:
                 args = get_args(arg)
-                if arg is not NoneType and type(args) is tuple and Ellipsis not in args:
+                if get_origin(arg) is tuple and Ellipsis not in args:
                     nargs = len(args)
 
         if nargs == 0:
             msg = f"Unable to determine nargs for {name=}, got {nargs=}"
             raise ValueError(msg)
         options["nargs"] = nargs
+
+    options.update(_create_choices_options(field.annotation))
 
     return field_name, options
 
