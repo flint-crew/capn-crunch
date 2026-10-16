@@ -39,6 +39,7 @@ metadata.allow-direct-references = true
 
 [dependency-groups]
 dev = [
+    "mypy>=2.4.0",
     "pre-commit>=4.5.1",
     "prek>=0.3.5",
     "pytest>=9.0.2",

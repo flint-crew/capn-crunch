@@ -3,6 +3,8 @@ from __future__ import annotations
 from argparse import ArgumentParser
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
 from pydantic.fields import FieldInfo
 
 from capn_crunch import BaseOptions, add_options_to_parser
@@ -15,7 +17,14 @@ class ShipOptions(BaseOptions):
 
 def test_options():
     ship_options = ShipOptions()
-    ship_options.with_options(ship="Interceptor")
+    new_ship_options = ship_options.with_options(ship="Interceptor")
+
+    assert isinstance(new_ship_options, ShipOptions)
+    assert new_ship_options.ship == "Interceptor"
+    assert ship_options.ship == "Black Pearl"
+
+    with pytest.raises(ValidationError):
+        ship_options.with_options(crew=10)
 
 
 def test_parser():

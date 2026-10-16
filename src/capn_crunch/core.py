@@ -8,6 +8,7 @@ hold stateful properties throughout the flint-crew codebases.
 from __future__ import annotations
 
 import logging
+import sys
 from types import NoneType, UnionType
 from typing import (
     TYPE_CHECKING,
@@ -22,8 +23,17 @@ from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser, Namespace
+    from typing import ParamSpec, Protocol
 
     from pydantic.fields import FieldInfo
+
+    _P = ParamSpec("_P")
+    _T = TypeVar("_T")
+    _T_co = TypeVar("_T_co", covariant=True)
+
+    class _SupportsReplace(Protocol[_P, _T_co]):
+        def __replace__(self, *args: _P.args, **kwargs: _P.kwargs) -> _T_co: ...
+
 
 logger = logging.getLogger("__name__")
 
@@ -48,20 +58,49 @@ class BaseOptions(BaseModel):
         arbitrary_types_allowed=True,
     )
 
-    def with_options(self, /, **kwargs: dict[str, Any]) -> Self:
-        """
-        Modify options.
+    if TYPE_CHECKING and sys.version_info >= (3, 13):
+        # Type checkers synthesise ``__replace__`` (all fields keyword-only and optional)
+        # for pydantic models when targeting python 3.13+, so borrow its signature.
+        def with_options(
+            self: _SupportsReplace[_P, _T], /, *args: _P.args, **kwargs: _P.kwargs
+        ) -> _T:
+            """
+            Modify options.
 
-        Returns a new instance of the options class.
+            Returns a new instance of the options class. When type checking against
+            python 3.13+ the keyword arguments are checked against the fields of the
+            options class. Values are validated by pydantic when the new instance is
+            created.
 
-        Returns:
-            Self: A new instance of the options.
+            Args:
+                *args: Not supported, all options must be passed by keyword.
+                **kwargs: The fields of the options class to update.
 
-        """
-        new_args = self.__dict__.copy()
-        new_args.update(**kwargs)
+            Returns:
+                Self: A new instance of the options.
 
-        return self.__class__(**new_args)
+            """
+
+    else:
+
+        def with_options(self, /, **kwargs: Any) -> Self:  # noqa: ANN401
+            """
+            Modify options.
+
+            Returns a new instance of the options class. Values are validated by
+            pydantic when the new instance is created.
+
+            Args:
+                **kwargs: The fields of the options class to update.
+
+            Returns:
+                Self: A new instance of the options.
+
+            """
+            new_args = self.__dict__.copy()
+            new_args.update(**kwargs)
+
+            return self.__class__(**new_args)
 
     def _asdict(self) -> dict[str, Any]:
         return self.model_dump()
