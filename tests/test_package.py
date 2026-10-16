@@ -42,18 +42,14 @@ def test_fieldinfo_to_argparse_options():
     splat into an ArgumentParser.add_argument method. Ensure the expected mappings from
     types to argument options make sense"""
     field = FieldInfo(default=1, annotation=int, description="An example description")
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_name == "--jack-sparrow"
     assert field_options["action"] == "store"
     assert field_options["default"] == 1
     assert field_options["help"] == "An example description"
 
     field = FieldInfo(annotation=int, description="An example description")
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_name == "jack_sparrow"
     assert field_options["action"] == "store"
     assert field_options["help"] == "An example description"
@@ -61,9 +57,7 @@ def test_fieldinfo_to_argparse_options():
     field = FieldInfo(
         default=[1, 2, 3, 4], annotation=list[int], description="An example description"
     )
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_name == "--jack-sparrow"
     assert field_options["action"] == "store"
     assert field_options["default"] == [1, 2, 3, 4]
@@ -74,9 +68,7 @@ def test_fieldinfo_to_argparse_options():
         default=("foo", "bar", 3),
         annotation=tuple[str, str, int],
     )
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_options["default"] == ("foo", "bar", 3)
     assert field_options["nargs"] == 3
 
@@ -84,9 +76,7 @@ def test_fieldinfo_to_argparse_options():
         default=("foo", "bar"),
         annotation=tuple[str, ...],
     )
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_options["default"] == (
         "foo",
         "bar",
@@ -97,9 +87,7 @@ def test_fieldinfo_to_argparse_options():
         default=None,
         annotation=tuple[str, str] | None,
     )
-    field_name, field_options = _create_argparse_options(
-        name="jack_sparrow", field=field
-    )
+    field_name, field_options = _create_argparse_options(name="jack_sparrow", field=field)
     assert field_options["default"] == None  # noqa E711
     assert field_options["nargs"] == 2
 
