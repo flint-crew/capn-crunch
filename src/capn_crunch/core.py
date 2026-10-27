@@ -8,7 +8,7 @@ hold stateful properties throughout the flint-crew codebases.
 from __future__ import annotations
 
 import logging
-from argparse import BooleanOptionalAction
+from argparse import Action, BooleanOptionalAction
 from types import NoneType, UnionType
 from typing import (
     TYPE_CHECKING,
@@ -25,10 +25,81 @@ from pydantic import BaseModel, ConfigDict
 
 if TYPE_CHECKING:
     from argparse import ArgumentParser, Namespace
+    from collections.abc import Sequence
 
     from pydantic.fields import FieldInfo
 
 logger = logging.getLogger("__name__")
+
+
+class BooleanFlagPair(BooleanOptionalAction):
+    """
+    A pair of flags for a ``bool`` option.
+
+    ``--name`` sets True and its negation sets False. The negation of ``--name``
+    is ``--no-name``, while the negation of a name that already starts with
+    ``no`` drops it, so ``--no-name`` pairs with ``--name`` rather than
+    ``--no-no-name``.
+
+    It is a ``BooleanOptionalAction``, with each flag followed by its negation,
+    so tools that recognise that action (e.g. configargparse, which turns
+    ``name = true`` in a config file into the flag) treat it the same way.
+    """
+
+    def __init__(
+        self,
+        option_strings: Sequence[str],
+        dest: str,
+        *,
+        default: bool | None = None,
+        required: bool = False,
+        help: str | None = None,  # noqa: A002
+    ) -> None:
+        """
+        Add the negation of each option string.
+
+        Args:
+            option_strings (Sequence[str]): The flags that set True.
+            dest (str): Attribute the value is stored in.
+            default (bool | None, optional): Value when neither flag is given. Defaults to None.
+            required (bool, optional): Whether one of the flags must be given. Defaults to False.
+            help (str | None, optional): Help text. Defaults to None.
+
+        """
+        self.true_option_strings = set(option_strings)
+        paired = []
+        for option in option_strings:
+            paired.append(option)
+            if option.startswith("--no-"):
+                paired.append("--" + option.removeprefix("--no-"))
+            elif option.startswith("--"):
+                paired.append("--no-" + option.removeprefix("--"))
+        # BooleanOptionalAction would add --no-* to every flag, so set up the
+        # pair here instead
+        Action.__init__(
+            self,
+            option_strings=paired,
+            dest=dest,
+            nargs=0,
+            default=default,
+            required=required,
+            help=help,
+        )
+
+    def __call__(
+        self,
+        _parser: ArgumentParser,
+        namespace: Namespace,
+        _values: object,
+        option_string: str | None = None,
+    ) -> None:
+        """Store True for the flags given at construction, False for their negations."""
+        setattr(namespace, self.dest, option_string in self.true_option_strings)
+
+    def format_usage(self) -> str:
+        """Show both flags of the pair in the usage line."""
+        return " | ".join(self.option_strings)
+
 
 # ``X | None`` gives ``types.UnionType``, but ``Optional[X]`` and ``Literal[...] | None``
 # give ``typing.Union`` (until python 3.14 where these are unified)
@@ -178,7 +249,8 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
 
     ``Literal`` annotations (including those inside containers or unions with
     ``None``) set the argparse ``choices``. ``bool`` fields become a pair of
-    flags, ``--name`` and ``--no-name``, whatever their default.
+    flags, ``--name`` and ``--no-name``, whatever their default (see
+    ``BooleanFlagPair``).
 
     Args:
         name (str): Attribute name.
@@ -203,7 +275,7 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
         # A flag can not be positional, so a required bool must be given as
         # one of the pair
         field_name = "--" + name.replace("_", "-")
-        options["action"] = BooleanOptionalAction
+        options["action"] = BooleanFlagPair
         if field.is_required():
             options["required"] = True
             del options["default"]

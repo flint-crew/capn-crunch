@@ -8,7 +8,7 @@ import pytest
 from pydantic.fields import FieldInfo
 
 from capn_crunch import BaseOptions, add_options_to_parser, create_options_from_parser
-from capn_crunch.core import _create_argparse_options
+from capn_crunch.core import BooleanFlagPair, _create_argparse_options
 
 
 class ShipOptions(BaseOptions):
@@ -180,6 +180,11 @@ class SailOptions(BaseOptions):
     """Drop the anchor"""
 
 
+class ReefOptions(BaseOptions):
+    no_reef: bool = False
+    """Avoid the reef"""
+
+
 class MutinyOptions(BaseOptions):
     mutiny: bool
     """Whether the crew mutinies"""
@@ -189,7 +194,7 @@ def test_bool_argparse_options():
     field = FieldInfo(default=True, annotation=bool, description="Drop the anchor")
     field_name, field_options = _create_argparse_options(name="drop_anchor", field=field)
     assert field_name == "--drop-anchor"
-    assert field_options["action"] is BooleanOptionalAction
+    assert field_options["action"] is BooleanFlagPair
     assert field_options["default"] is True
 
 
@@ -219,3 +224,25 @@ def test_parser_required_bool():
     assert parser.parse_args(["--no-mutiny"]).mutiny is False
     with pytest.raises(SystemExit):
         parser.parse_args([])
+
+
+def test_parser_bool_named_no():
+    """A bool named no_* pairs --no-name with --name, not --no-no-name"""
+    parser = add_options_to_parser(parser=ArgumentParser(), options_class=ReefOptions)
+
+    assert parser.parse_args([]).no_reef is False
+    assert parser.parse_args(["--no-reef"]).no_reef is True
+    assert parser.parse_args(["--reef"]).no_reef is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--no-no-reef"])
+    assert "[--no-reef | --reef]" in parser.format_usage()
+
+
+def test_bool_flags_are_boolean_optional_actions():
+    """Tools such as configargparse recognise BooleanOptionalAction and expect
+    each flag to be followed by its negation"""
+    parser = add_options_to_parser(parser=ArgumentParser(), options_class=ReefOptions)
+    (action,) = [a for a in parser._actions if a.dest == "no_reef"]
+
+    assert isinstance(action, BooleanOptionalAction)
+    assert action.option_strings == ["--no-reef", "--reef"]
