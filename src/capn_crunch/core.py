@@ -8,6 +8,7 @@ hold stateful properties throughout the flint-crew codebases.
 from __future__ import annotations
 
 import logging
+from argparse import BooleanOptionalAction
 from types import NoneType, UnionType
 from typing import (
     TYPE_CHECKING,
@@ -176,7 +177,8 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
     Convert a pydantic Field into ``dict`` to splat into ArgumentParser.add_argument.
 
     ``Literal`` annotations (including those inside containers or unions with
-    ``None``) set the argparse ``choices``.
+    ``None``) set the argparse ``choices``. ``bool`` fields become a pair of
+    flags, ``--name`` and ``--no-name``, whatever their default.
 
     Args:
         name (str): Attribute name.
@@ -198,7 +200,13 @@ def _create_argparse_options(name: str, field: FieldInfo) -> tuple[str, dict[str
     options = {"action": "store", "help": field.description, "default": field.default}
 
     if field.annotation is bool:
-        options["action"] = "store_false" if field.default else "store_true"
+        # A flag can not be positional, so a required bool must be given as
+        # one of the pair
+        field_name = "--" + name.replace("_", "-")
+        options["action"] = BooleanOptionalAction
+        if field.is_required():
+            options["required"] = True
+            del options["default"]
 
     # if field_type is in (list, tuple, set) OR if (list, tuple, set) | Any
     elif field_type in iterable_types or (

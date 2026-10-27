@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from argparse import ArgumentParser
+from argparse import ArgumentParser, BooleanOptionalAction
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -171,3 +171,51 @@ def test_parser_literal_choices():
 
     with pytest.raises(SystemExit):
         parser.parse_args(["--level", "4"])
+
+
+class SailOptions(BaseOptions):
+    hoist: bool = False
+    """Hoist the sails"""
+    anchor: bool = True
+    """Drop the anchor"""
+
+
+class MutinyOptions(BaseOptions):
+    mutiny: bool
+    """Whether the crew mutinies"""
+
+
+def test_bool_argparse_options():
+    field = FieldInfo(default=True, annotation=bool, description="Drop the anchor")
+    field_name, field_options = _create_argparse_options(name="drop_anchor", field=field)
+    assert field_name == "--drop-anchor"
+    assert field_options["action"] is BooleanOptionalAction
+    assert field_options["default"] is True
+
+
+def test_parser_bool_flags():
+    """Every bool is a --name / --no-name pair, whatever its default"""
+    parser = add_options_to_parser(parser=ArgumentParser(), options_class=SailOptions)
+
+    options = create_options_from_parser(parser.parse_args([]), SailOptions)
+    assert options.hoist is False
+    assert options.anchor is True
+
+    args = parser.parse_args(["--hoist", "--no-anchor"])
+    options = create_options_from_parser(args, SailOptions)
+    assert options.hoist is True
+    assert options.anchor is False
+
+    args = parser.parse_args(["--no-hoist", "--anchor"])
+    options = create_options_from_parser(args, SailOptions)
+    assert options.hoist is False
+    assert options.anchor is True
+
+
+def test_parser_required_bool():
+    parser = add_options_to_parser(parser=ArgumentParser(), options_class=MutinyOptions)
+
+    assert parser.parse_args(["--mutiny"]).mutiny is True
+    assert parser.parse_args(["--no-mutiny"]).mutiny is False
+    with pytest.raises(SystemExit):
+        parser.parse_args([])
